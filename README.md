@@ -1,2 +1,2 @@
-# climate-change
-This is a project undertaken as part of the module MATH5747M at the University of Leeds.
+# Climate Change
+This is a project undertaken as part of the module MATH5747M at the University of Leeds. The central theme of this project is to investigate the effects of carbon dioxide emissions on global warming. A data-driven approach is taken to confirm the authenticity of global warming through phenomena like increases in global temperatures and rising sea levels. An analysis was done to gain insights on the global share of carbon dioxide emissions by countries, in absolute amount and in cumulative terms. We also used a multiple linear regression to model carbon dioxide emissions per capita using GDP per capita, life expectancy, urban population proportion and unemployment rate as predictor variables.
