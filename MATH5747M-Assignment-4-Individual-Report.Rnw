@@ -1,0 +1,1383 @@
+\documentclass[10pt, a4paper]{article}
+% The next line loads some packages you will need
+\usepackage{graphicx, amsmath, amssymb, fancyhdr, setspace, caption, subcaption, bm, hyperref, cleveref, float, booktabs}
+\captionsetup[figure]{font=footnotesize}
+\usepackage[square, numbers]{natbib}
+
+% Page formatting
+\addtolength{\textwidth}{5mm}
+\addtolength{\textheight}{12mm}
+\addtolength{\topmargin}{-10mm}
+\pretolerance = 10000000
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{\baselineskip}
+\onehalfspacing   
+
+% Header / footer
+\pagestyle{fancy}
+\lhead{Zeya Lwin Tun, 201378539}
+\chead{}
+\rhead{\em MATH5747M, Assignment 4}
+\lfoot{}
+\cfoot{\thepage}
+\rfoot{}
+\setlength{\headheight}{20pt}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+<<setup, include=FALSE>>=
+
+# Set the global chunk options
+opts_chunk$set(include = FALSE, fig.pos="H")
+
+# Import necessary libraries
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(lubridate)
+library(gridExtra)
+library(scales)
+library(hrbrthemes)
+library(knitr)
+library(gridExtra)
+library(dagR)
+library(treemapify)
+
+@
+
+\begin{document}
+%\bibliographystyle{ieeetr}
+\bibliographystyle{unsrt}
+\begin{center}
+\textbf{\Large Climate Change and Global Warming:} \\
+\textbf{\Large The Role of Carbon Dioxide Emissions} \\
+\end{center}
+\vspace{-10mm}
+\section{Introduction}
+\vspace{-3mm}
+Climate change is arguably the biggest environmental threat that the Earth is facing in the 21\textsuperscript{st} century. It refers to changes in the Earth's climate system, contributed by both natural processes and human activities. These natural processes include cyclical ocean patterns such as the El Niño, volcanic activities and variations in solar energy from the Sun \cite{shaftelOverviewWeatherGlobal}. On the other hand, human activities, particularly since the Industrial Revolution at the beginning of the 20\textsuperscript{th} century, have been causing irreversible damage to the Earth's climate system through emissions of greenhouse gases and the corresponding impact of global warming. This report provides a data-driven analysis of the primary greenhouse gas, carbon dioxide ($\mathrm{CO_2}$), and its role in global warming and climate change. 
+\vspace{-6mm}
+\subsection{Scope}
+\vspace{-3mm}
+In Section 2, we will investigate the authenticity of the global warming phenomenon using various key indicators. We will provide a scientific explanation of global warming in Section 3. In Section 4, we will analyse trends in levels of global $\mathrm{CO_2}$ emissions and discuss which countries ought to be most responsible. In Section 5, we will apply a statistical model to understand the relationships between $\mathrm{CO_2}$ emissions per capita and various socio-economic variables. We will discuss limitations of our analyses in Section 6, before proposing potential areas for future research in Section 7. All analyses underlying this report were performed using the R statistical software \cite{rdct:r} and are reproducible using the code available at \url{www.github.com/zeyalt/climate-change}.
+\vspace{-6mm}
+\subsection{Datasets}
+\vspace{-3mm}
+The main datasets used in this report include the global temperature and sea level datasets from National Aeronautics and Space Administration (NASA), carbon dioxide emissions datasets from Global Carbon Project (GCP) and Carbon Dioxide Information Analysis Centre (CDIAC), as well as various demographic datasets from the World Bank and United Nations (UN) Population Division. A full list of the datasets used and their descriptions is presented in the Appendix. These datasets are also available at \url{www.github.com/zeyalt/climate-change}. 
+\vspace{-6mm}
+\section{Is Global Warming Real?}
+\vspace{-3mm}
+The authenticity of global warming can be validated by analysing changes in the Earth's climate system over time. In this section, we will focus on two key indicators---global temperatures and sea levels. 
+\vspace{-6mm}
+\subsection{Increasing Global Temperatures}
+\vspace{-3mm}
+The first key indicator is changes in global temperatures, measured in terms of temperature anomalies\footnote{Temperature anomaly is the difference between an observed absolute temperature and the average temperature over a baseline period. It is typically preferred over absolute temperatures in climate studies because the latter is more susceptible to variations in measurements due to locations and altitudes of weather monitoring stations \cite{nationaloceanicandatmosphericadministrationAnomaliesVsTemperature}.}. A time-series plot showing variations in global land-ocean temperature anomalies\footnote{Land-ocean temperature anomalies take into consideration both land and sea surface temperatures \cite{nasagoddardinstituteforspacestudiesGISSSurfaceTemperature}.} from 1880 to 2019 with data from NASA \cite{gistempteam2020GISSSurface, le05800h} is shown in Figure \ref{figure_1}. These temperature anomalies were calculated based on the average temperature of the baseline period between 1951 and 1980. 
+
+<<raw_global_mean_temperature>>=
+
+raw_global_mean_temperature <- read.csv("Data/GLB.Ts+dSST.csv",
+                                        skip = 1, 
+                                        stringsAsFactors=FALSE)
+@
+
+<<df_global_mean_temp_by_month>>=
+
+df_global_mean_temp_by_month <-
+  raw_global_mean_temperature %>% 
+    select(1:13) %>% 
+    gather(key = month, value = monthly_mean, -Year) %>% 
+    arrange(Year) %>%
+    mutate(Date = ymd(paste0(Year, " ", month, " ", "1"))) %>% 
+    select(Date, monthly_mean)
+
+@
+
+<<df_global_mean_temp_annual, warning=FALSE>>=
+
+df_global_mean_temp_annual <- 
+  raw_global_mean_temperature %>% 
+    select(1, annual_mean=14) %>% 
+    mutate(Date = ymd(paste0(Year, " ", "1", " ", "1"))) %>%
+    mutate(annual_mean=as.numeric(annual_mean)) %>% 
+    na.omit()
+
+@
+
+<<moving_average_function>>=
+
+# Define a function for moving average
+ma <- function(x, n = 5){stats::filter(x, rep(1 / n, n), sides = 2)}
+
+@
+
+<<figure_1, eval=FALSE, echo=TRUE>>=
+
+break_fig1 <- seq(from = 1880, to = 2019, by = 20) 
+break_fig1 <- append(break_fig1, 2019)
+col <- c("Yearly Average" = "blue", "5-Year Moving Average" = "red")
+
+ggplot(df_global_mean_temp_annual, aes(x = Date)) +
+  geom_line(aes(y = annual_mean, color = "Yearly Average"),
+            alpha=0.5, 
+            na.rm = TRUE, 
+            show.legend = TRUE) + 
+  geom_point(aes(y = annual_mean), 
+             color="blue", 
+             alpha=0.5, 
+             na.rm = TRUE) + 
+  geom_line(aes(y = ma(annual_mean), color = "5-Year Moving Average"), 
+            lwd=1.3, 
+            na.rm = TRUE, 
+            show.legend = TRUE) +
+  xlab("") +
+  scale_color_manual(values = col) +
+  scale_x_date(breaks = as.Date(paste0(as.character(break_fig1), "-01-01")),
+               date_labels = "%Y", 
+               limits = c(as.Date("1880-01-01"), as.Date("2019-01-01"))) +
+  ylab("Global Mean Land-Ocean Temperature Anomaly \n(degree Celsius)") +
+  scale_y_continuous() +
+  annotate("text", x = as.Date("2000-01-01"), y = -0.35, label = "Baseline Period: 1951-1980") +
+  labs(caption = "(Source: NASA Goddard Institute for Space Studies (GISS))", 
+       color = "Legend") +
+  theme_gray() +
+  theme(legend.position = c(0.3, 0.9), 
+      legend.text = element_text(size = 10), 
+      legend.title = element_blank())
+  
+ggsave("figure_1.png", width = 8, height = 5)
+
+@
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width = 10cm]{figure_1.png}
+\caption{Variation of global mean land-ocean temperature anomaly, 1880-2019}
+\label{figure_1}
+\end{figure}
+Figure \ref{figure_1} shows that since the 1970s, temperature anomalies have consistently been positive\footnote{A positive temperature anomaly means that the observed temperature was higher than the average temperature of the baseline period; a negative anomaly indicates otherwise \cite{nationaloceanicandatmosphericadministrationAnomaliesVsTemperature}.}, indicating that the Earth has been warmer than the baseline period. Since then, within a span of 50 years, the temperature anomaly has risen by 1 degree Celsius, a clear evidence of global warming. In fact, global temperatures had been projected to continue increasing in the future, regardless of any global intervention measures \cite{ritchieCOGreenhouseGas2017}.
+\vspace{-6mm}
+\subsection{Rising Sea Levels}
+\vspace{-3mm}
+Rising global sea levels provides another strong evidence of global warming. Figure \ref{figure_2} shows a time-series plot of the global mean sea levels (GMSL) since 1993 with data from NASA \cite{beckleyGlobalMeanSea2016}. Between 1993 and 2019, the GMSL increased by almost 10 centimetres. This was largely caused by melting glaciers and ice sheets in Greenland and Antarctica as a result of a warmer Earth \cite{Duttonaaa4019}. In addition, a vast amount of heat trapped by greenhouse gases in the atmosphere is absorbed by the oceans, causing thermal expansion of the ocean water and consequently a rise in sea levels \cite{nasasealevelchangeUnderstandingSeaLevel}. 
+
+<<raw_sea_levels>>=
+
+raw_sea_levels <- read.delim("Data/GMSL_TPJAOS_4.2_199209_202003.txt", 
+                          skip = 50, 
+                          header = FALSE, 
+                          sep = "") 
+
+@
+
+<<df_sea_levels>>=
+
+df_sea_levels <- 
+  raw_sea_levels %>%
+  mutate(timestamp=date_decimal(V3)) %>% 
+  select(timestamp, gmsl_variation=9) %>% 
+  mutate(date=date(timestamp)) %>% 
+  mutate(gmsl_variation_trans = gmsl_variation + 37.24) %>% 
+  select(date, gmsl_variation_trans)
+
+@
+
+<<figure_2, eval=FALSE, echo=TRUE, warning=FALSE>>=
+
+break_fig2 <- seq(from = 1994, to = 2018, by = 4)
+col2 <- c("Weekly Average" = "blue", "Yearly Moving Average" = "red")
+
+ggplot(df_sea_levels, aes(x = date)) +
+  geom_line(aes(y = gmsl_variation_trans, color = "Weekly Average"), 
+            alpha = 0.5, 
+            show.legend = TRUE) +
+  geom_line(aes(y = ma(gmsl_variation_trans, 37), color="Yearly Moving Average"), 
+            lwd=1.3, 
+            na.rm = TRUE, 
+            show.legend = TRUE) +
+  xlab("") +
+  ylab("Global Mean Sea Levels (millimetres)") +
+  scale_color_manual(values = col2) +
+  scale_x_date(breaks = as.Date(paste0(as.character(break_fig2), "-01-01")),
+               date_labels = "%Y", 
+               limits = c(as.Date("1993-01-05"), as.Date("2019-12-11"))) +
+  theme_grey() +
+  labs(caption = "(Source: NASA Goddard Space Flight Center)\nNote: The global mean sea levels at any time point is with reference to the global mean sea level in January 1993.", 
+       color = "Legend") +
+  theme(legend.position = c(0.3, 0.9), 
+      legend.text = element_text(size = 10), 
+      legend.title = element_blank())
+
+ggsave("figure_2.png", width = 8, height = 5)
+
+@
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width = 10cm]{figure_2.png}
+\caption{Variation of global mean sea levels, 1993-2019}
+\label{figure_2}
+\end{figure}
+The threats of higher global temperatures and rising sea levels cannot be understated. One manifestation of these phenomena is the occurrences of catastrophic weather events such as floods, typhoons and tsunamis \cite{nunezSeaLevelRise2019}, which lead to losses of lives, disruptions to livelihoods and destruction of natural habitats of animals and plants. Such events are not only increasing in frequency \cite{europeanacademiesscienceadvisorycouncilExtremeWeatherEvents2018}, but also in intensity. For example, a study by Kossin in 2018 found that hurricanes and typhoons since the 1980s had been causing greater damages such as unprecedented rainfalls than they did before \cite{kossinGlobalSlowdownTropicalcyclone2018}. 
+\vspace{-6mm}
+\section{What Causes Global Warming?}
+\vspace{-3mm}
+Having demonstrated that global warming is real, we will, in this section, provide a scientific explanation of what causes it. In essence, global warming is the result of an ``enhanced greenhouse effect". When solar energy from the Sun hits the Earth's surface, most of it is absorbed but the rest is reflected off. Greenhouse gases in the Earth's atmosphere, such as $\mathrm{CO_2}$, nitrous oxide ($\mathrm{N_2O}$), methane ($\mathrm{CH_4}$) and water vapour ($\mathrm{H_2O}$), trap some of the reflected solar energy and dissipate them within the Earth's atmosphere. This is known as the ``greenhouse effect'' \cite{nasaglobalclimatechangeCausesClimateChange}. 
+
+The right equilibrium of greenhouse gases in the atmosphere is necessary for survival on Earth. Without these greenhouse gases, the Earth would be significantly colder and many life forms would not survive. However, this equilibrium had been disrupted, as more greenhouse gases were introduced into the atmosphere in the last century. This enhances the greenhouse effect, causing Earth to heat up \cite{nasaglobalclimatechangeCausesClimateChange}. 
+
+There has been an overwhelming consensus in the scientific community that global warming had been a direct result of human activities \cite{nasaglobalclimatechangeScientificConsensusEarth}. A study by Cook et al. found that this consensus was shared by ``90\% to 100\% of publishing climate scientists" \cite{cookConsensusConsensusSynthesis2016}. These human activities are being pursued by countries in the interest of urbanisation and economic growth. Examples include fossil fuel combustion, deforestation, urbanisation and trade. An unintended consequence is that more fuel are being burned to meet the world's increasing energy needs and standards of living, thereby releasing more greenhouse gases into the atmosphere.
+\vspace{-6mm}
+\section{Key Contributors of Carbon Dioxide Emissions}
+\vspace{-3mm}
+The primary greenhouse gas is $\mathrm{CO_2}$ and it is emitted mainly through human activities. In this section, we will analyse trends of two major contributing factors of $\mathrm{CO_2}$ emissions---fossil fuel combustion and deforestation.  
+\vspace{-6mm}
+\subsection{Fossil Fuel Combustion}
+\vspace{-3mm}
+Fossil fuels are derived from fossilised remains of plants and animals that lived on Earth millions of years ago \cite{june29FossilFuelsDirty}. As a result of how they were formed, fossil fuels contain high amounts of carbon. When they are burned to meet the world's energy demands, tremendous amounts of stored carbon are released into the atmosphere as $\mathrm{CO_2}$. These increase the levels of greenhouse gases in the atmosphere, thereby exacerbating the greenhouse effect.
+<<raw_co2_by_source>>=
+
+raw_co2_by_source <- read.csv("Data/CO2-by-source.csv", 
+                              col.names = c("entity", "code", "year", "cement", "flaring", "oil", "coal", "gas"))
+
+@
+
+<<df_co2_by_source>>=
+
+df_co2_by_source <- 
+  raw_co2_by_source %>% 
+    filter(entity=="World") %>% 
+    filter(year >= 1850) %>% 
+    group_by(year) %>%  
+    summarise(Cement=sum(as.numeric(cement)),
+              Flaring=sum(as.numeric(flaring)), 
+              Oil=sum(oil), 
+              Coal=sum(coal), 
+              Gas=sum(gas)) %>% 
+    mutate(Others=Cement+Flaring) %>% 
+    select(1, 5, 4, 6, 7)
+
+# Convert the 'year' column from integer to date format
+df_co2_by_source$year <- as.Date(as.character(df_co2_by_source$year), format="%Y")
+
+# Replace NA values with 0
+df_co2_by_source[is.na(df_co2_by_source)] <- 0
+
+@
+
+<<df_percentage_fuel_2017>>=
+
+df_percentage_fuel_2017 <- 
+  df_co2_by_source %>% 
+    filter(year(year)==2017) %>% 
+    mutate(total=sum(Coal, Oil, Gas, Others)) %>% 
+    mutate(perc_coal = Coal*100/total, 
+           perc_oil = Oil*100/total, 
+           perc_gas = Gas*100/total, 
+           perc_others = Others*100/total) %>% 
+    select(7:10)
+
+@
+
+<<df_co2_by_source_gathered>>=
+
+df_co2_by_source_gathered <-
+  df_co2_by_source %>% 
+    gather("Others", "Oil", "Coal", "Gas", 
+           key = "fuel_type", value = "emission_amt") 
+
+# Convert 'fuel_type' column into factor
+df_co2_by_source_gathered$fuel_type <-
+  factor(df_co2_by_source_gathered$fuel_type, 
+         levels = c("Others", "Gas", "Oil", "Coal"))
+
+@
+
+<<figure_3, eval=FALSE, echo=TRUE, warning=FALSE>>=
+
+# Define breaks
+brks <- df_co2_by_source$year[seq(1, length(df_co2_by_source$year), 20)]
+
+ggplot(data = df_co2_by_source_gathered, 
+       aes(x = year, y = (emission_amt)/10e8, fill=fuel_type)) +
+  geom_area(alpha=0.7, size=0.5, colour="white") +
+  scale_fill_brewer(palette = "Spectral", direction = -1) +
+  xlab("") +
+  ylab("Carbon Dioxide Emissions (billion tonnes)") +
+  scale_x_date(breaks = brks, 
+               labels = year(brks)) +
+  theme_gray() +
+  theme(legend.title = element_blank(), 
+        legend.position = c(0.1, 0.75)) +
+  labs(caption = "(Source: GCP and CDIAC.)\nNote: Data before 1959 was sourced from CDIAC; data from 1959 onwards was obtained from GCP.\n'Others' includes emissions from flaring and cement.")
+
+ggsave("figure_3.png", width = 8, height = 5)
+
+@
+\begin{figure}[!htb]
+\centering
+\includegraphics[width = 10cm]{figure_3.png}
+\caption{Global carbon dioxide emissions by fuel types, 1850 to 2017}
+\label{figure_3}
+\end{figure}
+There are three main types of fossil fuels---coal, oil and natural gas. Figure \ref{figure_3} shows how global $\mathrm{CO_2}$ emissions by these fuel types have changed since 1850. Until the early 20\textsuperscript{th} century, coal was the predominant source of fuel and the only contributor to global $\mathrm{CO_2}$ emissions. Around the mid-20\textsuperscript{th} century, oil and gas emerged as alternative fuels. Consumption of these alternative fuels released more $\mathrm{CO_2}$, accelerating the increase in global emissions. In 2017, coal and oil were the dominant contributors of $\mathrm{CO_2}$ emissions, accounting for more than three-quarters of global emissions.  
+\vspace{-6mm}
+\subsection{Deforestation}
+\vspace{-3mm}
+Table \ref{table_1} summarises the changes in the global forest cover area since 2000 over 5-years intervals\footnote{This data was provided by the Food and Agriculture Organisation (FAO) of the UN, who collects and analyses data on forest area at intervals of 5 to 10 years.}. These numbers indicate that deforestation is happening, evidenced by the decreasing area of global forest cover over the last two decades. It can also be inferred that an average of 19.7 million hectares of forest cover was lost every five years since 2000. This translates to a yearly average of 3.93 million hectares.
+
+<<raw_forest_area>>=
+
+raw_forest_area <- read.csv("Data/Forest_area_thousands_of_hectares.csv") %>%
+  select(8, 10, 28, 29, 30, 31) 
+
+@
+
+<<df_forest_area_total>>=
+
+df_forest_area_total <-
+  raw_forest_area %>% 
+    summarise_at(.vars = vars(value_2000, value_2005, value_2010, value_2015), .funs = c(sum="sum"), na.rm = TRUE) %>% 
+  select("2000"="value_2000_sum", "2005"="value_2005_sum",
+         "2010"="value_2010_sum", "2015"="value_2015_sum") %>% 
+  gather(key = year, value = global_forest_area) %>% 
+  mutate(year=as.numeric(year))
+
+@
+
+<<deforestation_table, eval=FALSE>>=
+
+df_forest_area_change <-
+df_forest_area_total %>% 
+  mutate(global_forest_area=global_forest_area/1e6) %>%
+  mutate(global_forest_area = round(global_forest_area, 3)) %>% 
+  mutate(`Absolute Change (billion hectares)` = c("-", "-0.024", "-0.018", "-0.017")) %>% 
+  mutate(`Percentage Change` = c("-", "-0.580%", "-0.438%", "-0.427%")) %>% 
+  select(Year=year, `Global Forest Area (billion hectares)`=global_forest_area, `Absolute Change (billion hectares)`, `Percentage Change`) 
+
+print(xtable::xtable(df_forest_area_change))
+
+@
+
+\begin{table}[!htb]
+\centering
+\begin{tabular}{ccccc}
+  \hline
+\textbf{Year} & \textbf{Global Forest Area} & \textbf{Absolute Change} & \textbf{Percentage Change} \\ 
+& \textbf{(billion hectares)} & \textbf{(billion hectares)} & \\
+   \hline
+2000 & 4.05 & - & - \\ 
+2005 & 4.03 & -0.024 & -0.580\% \\ 
+2010 & 4.01 & -0.018 & -0.438\% \\ 
+2015 & 3.99 & -0.017 & -0.427\% \\ 
+   \hline
+\end{tabular}
+\caption{Changes in the total area of global forest covers, 2000-2015}
+\label{table_1}
+\end{table}
+
+<<df_forest_area_by_regions>>=
+
+# Define the factor levels for regions
+region_factor <- c("Northern Africa", "Southern Africa", "Eastern Africa", "Western Africa", "Middle Africa", "Southern Asia", "South-Eastern Asia", "Eastern Asia", "Western Asia", "Central Asia", "Oceania", "Micronesia", "Melanesia", "Polynesia", "Northern America", "Central America", "South America", "Caribbean", "Northern Europe", "Southern Europe", "Eastern Europe", "Western Europe")
+
+# Create a dataframe to store change in forest area since 2000 by regions
+df_forest_area_by_regions <- raw_forest_area %>% 
+  group_by(parentName) %>% 
+  summarise_at(.vars = vars(value_2000, value_2005, value_2010, value_2015), .funs = c(sum="sum"), na.rm = TRUE) %>% 
+  mutate(ref_2000_vs_2000 = value_2000_sum/value_2000_sum,
+         ref_2005_vs_2000 = value_2005_sum/value_2000_sum, 
+         ref_2010_vs_2000 = value_2010_sum/value_2000_sum,
+         ref_2015_vs_2000 = value_2015_sum/value_2000_sum) %>% 
+  select(region=parentName, "2000"=ref_2000_vs_2000, "2005"=ref_2005_vs_2000,
+         "2010"=ref_2010_vs_2000, "2015"=ref_2015_vs_2000) %>% 
+  filter(!(region == "World" | region == "Channel Islands")) %>% 
+  mutate(region=as.character(region)) %>% 
+  mutate(region = replace(region, region=="Australia and New Zealand", "Oceania")) %>% 
+  mutate(region=as.factor(region)) %>% 
+  mutate(region=factor(region, levels = region_factor)) %>% 
+  mutate(trend = case_when(
+    (`2015`>`2000`) ~ "Increasing",
+    (`2015`<`2000`) ~ "Decreasing")) %>% 
+  mutate(trend=as.factor(trend)) %>%  
+  gather(`2000`, `2005`, `2010`, `2015`,
+         key = year, value = forest_area, -region) %>%
+  mutate(year=as.numeric(year))
+
+@
+
+<<figure_4, eval=FALSE, echo=TRUE, warning=FALSE>>=
+
+ggplot(df_forest_area_by_regions) +
+  geom_line(mapping = aes(x = year, y = forest_area, color=trend), 
+            size=0.9,
+            alpha=0.7,
+            show.legend = TRUE) +
+  labs(caption = "(Source: UN Statistics Division)\nNote: Factor of change was calculated from dividing the area of forest cover\nin a particular year by the area of forest cover in 2000.") +
+  xlab("") +
+  ylab("Factor of change in area of forest cover") +
+  scale_color_manual(values = c("red", "blue")) +
+  facet_wrap(vars(region), nrow=4, ncol = 6) +
+  theme_grey() +
+  theme(axis.text.x = element_text(angle = 45),
+        legend.position = c(0.9, 0.05), 
+        legend.title.align = 0, 
+        legend.title = element_blank(),
+        legend.text = element_text(size = 13),
+        legend.box = "horizontal")
+
+ggsave("figure_4.png", width = 8, height = 6)
+
+@
+\begin{figure}[!htb]
+\centering
+\includegraphics[width = 10cm]{figure_4.png}
+\caption{A breakdown of deforestation trends from 2000 to 2015 by geographical regions}
+\label{figure_4}
+\end{figure}
+A breakdown of the deforestation trends by geographical regions is shown in Figure \ref{figure_4}. Evidently, deforestation had been more rampant in some regions than others. For instance, Africa saw decreases in forest covers in every geographical region since 2000, with the steepest decrease in West Africa. Other regions with losses in forest covers include South-Eastern Asia and South America, with the latter being home to Amazon rainforest. On the flip side, regions like Europe, Polynesia, Caribbean and most of Asia had been showing encouraging signs of growing forest cover. In Europe, for example, this had been due to increased forest protection, decline in farming and reforestation efforts \cite{woodEuropeForestsAre2019}. 
+
+Deforestation has been happening for a few reasons. One key driver is the production of timber and wood. Vast amounts of trees are also cut down and burned for agriculture reasons, such as the production of palm oil and soy \cite{theworldcountsWhyDeforestationProblem}. In addition, forests are cleared to make way for infrastructures such as roads and buildings. 
+
+Deforestation has detrimental effects on the Earth's natural environment. The most immediate consequence is the destruction of eco-systems of many species of insects, plants and animals living in forest environments. It also contributes to more $\mathrm{CO_2}$ in the atmosphere. Given that forests play an important role in regulating $\mathrm{CO_2}$ and oxygen in the atmosphere, deforestation diminishes this ability of forests to regulate $\mathrm{CO_2}$ levels as there are lesser trees to remove $\mathrm{CO_2}$ from the air. Moreover, when cut trees are burned, they release stored carbon as $\mathrm{CO_2}$. 
+\vspace{-6mm}
+\section{An Analysis of $\mathbf{CO_2}$ Emissions Levels}
+\vspace{-3mm}
+Besides fossil fuel combustion and deforestation, many other human activities such as trade and transportation also emit $\mathrm{CO_2}$. In this section, we will analyse the total global $\mathrm{CO_2}$ emission levels and how they have changed over time. We will also discuss which countries should be most responsible for $\mathrm{CO_2}$ emissions.
+\vspace{-6mm}
+\subsection{How Have Emission Levels Changed Over Time?}
+\vspace{-3mm}
+Figure \ref{figure_3} presented in Section 4.1 also depicts the change in global $\mathrm{CO_2}$ emissions over the years. It shows that the global $\mathrm{CO_2}$ emissions had been on an upward trend since 1850, increasing by 180-folds from about 0.2 billion tonnes (bt) in 1850 to more than 36 bt in 2017. The rate of increase of $\mathrm{CO_2}$ emissions was much steeper from the 1950s onwards, after oil and natural gas emerged as alternative fuels. This also coincided with the post-war period, which suggests that more $\mathrm{CO_2}$ could have been emitted as many countries sought to rebuild their economies after the war.  
+
+<<raw_annual_co2_emissions_by_region>>=
+
+# Import data
+raw_annual_co2_emissions_by_region <- read_csv("Data/annual-co-emissions-by-region.csv")
+
+# Change column names
+colnames(raw_annual_co2_emissions_by_region) <- c("entity", "code", "year", "annual_CO2_emission")
+
+@
+
+<<df_co2_emissions_by_year>>=
+
+# Create a dataframe to store global CO2 emissions by year
+df_co2_emissions_by_year <-
+  
+  # Start with the original dataframe
+  raw_annual_co2_emissions_by_region %>% 
+  
+    # Group by year
+    filter(entity == "World") %>%  
+  
+    # Select only years after 1850
+    filter(year >= 1850)
+
+# Convert the 'year' column into 'Date' format suitable for time series analysis
+df_co2_emissions_by_year$year <- as.Date(paste(df_co2_emissions_by_year$year, 1, 1, sep="-"))
+
+@
+
+<<figure_5, eval=FALSE, echo=TRUE>>=
+
+break_fig5 <- seq(from = 1850, to = 2017, by = 20)
+
+ggplot(df_co2_emissions_by_year, aes(year, annual_CO2_emission/10e8)) +
+  geom_line(color="blue", lwd = 1.3) +
+  labs(caption = "(Source: Global Carbon Project (GCP); Carbon Dioxide Information Analysis Center (CDIAC))") +
+  xlab("") +
+  ylab("Carbon Dioxide Emissions (billion tonnes)") +
+  scale_x_date(breaks = as.Date(paste0(as.character(break_fig5), "-01-01")),
+               date_labels = "%Y") + 
+  scale_y_continuous() +
+  theme_gray()
+
+ggsave("figure_5.png", width = 8, height = 5)
+
+@
+
+%\begin{figure}[!htb]
+%\centering
+%\includegraphics[width = 8cm]{figure_5.png}
+%\caption{Trends in global carbon dioxide emissions from 1850 to 2017}
+%\label{figure_5}
+%\end{figure}
+\vspace{-6mm}
+\subsection{Who Should Be Most Responsible?}
+\vspace{-3mm}
+Since climate change is a global problem, every country ought to exercise a shared responsibility to tackle it. In reality, every country is contributing to $\mathrm{CO_2}$ emissions in different magnitudes, some much greater than the others. One common argument is that countries which are the biggest emitters should bear the greatest responsibility. However, there are different interpretations of the phrase ``biggest emitters''.
+
+One interpretation is based on the share of global $\mathrm{CO_2}$ emissions in a recent year. For instance, the share of global $\mathrm{CO_2}$ emissions in 2017 is depicted by the treemap visualisation in \Cref{fig:figure_5a}. It shows that Asia accounted for more than half of global $\mathrm{CO_2}$ emissions. China was the biggest emitter with a global share of 26.4\%. The next major emitters were United States (14.2\%), India (6.6\%) and Russia (4.6\%).
+
+<<raw_country_region>>=
+
+raw_country_region <- read.csv("Data/country-and-continent-codes-list.csv", 
+                               stringsAsFactors = FALSE)
+
+@
+
+<<df_co2_emissions_2017_by_countries>>=
+
+df_co2_emissions_2017_by_countries <-
+  raw_annual_co2_emissions_by_region %>% 
+  filter(year == 2017) %>% 
+  filter(!is.na(code)) %>% 
+  inner_join(raw_country_region, by=c("code"="Three_Letter_Country_Code")) %>% 
+  select(1, 2, 4, 5) %>% 
+  mutate(continent = as.factor(Continent_Name)) %>% 
+  mutate(share = round(annual_CO2_emission*100/sum(annual_CO2_emission), 2)) %>% 
+  select(1, 2, 3, 5, 6)
+
+# Remove duplicates
+df_co2_emissions_2017_by_countries <- df_co2_emissions_2017_by_countries[!(df_co2_emissions_2017_by_countries$entity == "Azerbaijan" & df_co2_emissions_2017_by_countries$continent == "Europe"),]
+
+df_co2_emissions_2017_by_countries <- df_co2_emissions_2017_by_countries[!(df_co2_emissions_2017_by_countries$entity == "Armenia" & df_co2_emissions_2017_by_countries$continent == "Europe"),]
+
+df_co2_emissions_2017_by_countries <- df_co2_emissions_2017_by_countries[!(df_co2_emissions_2017_by_countries$entity == "Turkey" & df_co2_emissions_2017_by_countries$continent == "Europe"),]
+
+df_co2_emissions_2017_by_countries <- df_co2_emissions_2017_by_countries[!(df_co2_emissions_2017_by_countries$entity == "Cyprus" & df_co2_emissions_2017_by_countries$continent == "Asia"),]
+
+df_co2_emissions_2017_by_countries <- df_co2_emissions_2017_by_countries[!(df_co2_emissions_2017_by_countries$entity == "Georgia" & df_co2_emissions_2017_by_countries$continent == "Asia"),]
+
+df_co2_emissions_2017_by_countries <- df_co2_emissions_2017_by_countries[!(df_co2_emissions_2017_by_countries$entity == "Russia" & df_co2_emissions_2017_by_countries$continent == "Asia"),]
+
+df_co2_emissions_2017_by_countries <- df_co2_emissions_2017_by_countries[!(df_co2_emissions_2017_by_countries$entity == "Kazakhstan" & df_co2_emissions_2017_by_countries$continent == "Asia"),]
+
+df_co2_emissions_2017_by_countries$label <- 
+  paste(df_co2_emissions_2017_by_countries$entity, 
+        paste0(df_co2_emissions_2017_by_countries$share, "%"),
+        paste(round((df_co2_emissions_2017_by_countries$annual_CO2_emission)/1e9, 2), "bt", sep = " "), 
+        sep = "\n")
+
+@
+
+<<figure_5a, eval=FALSE, echo=TRUE>>=
+
+ggplot(df_co2_emissions_2017_by_countries, aes(area = annual_CO2_emission, 
+                fill = continent,
+                label = label, 
+                subgroup = continent,
+                subgroup2 = entity)) +
+  scale_fill_brewer(palette = "Dark2") +
+  geom_treemap(aes(alpha = annual_CO2_emission), show.legend = FALSE) +
+  geom_treemap_subgroup_border(colour="white", show.legend = FALSE) + 
+  scale_alpha(range = c(0.2, 1)) +
+  geom_treemap_text(colour = "black",
+                    alpha = 0.6,
+                    place = "bottomleft",
+                    grow = F,
+                    reflow = T) +
+  geom_treemap_subgroup_text(fontface = "bold.italic",
+                             place = "top",
+                             grow = T,
+                             alpha = 0.3,
+                             colour = "black",
+                             min.size = 0) + 
+  labs(fill = "Carbon Dioxide Emission in 2017 (billion tonnes)", 
+       caption = "(Source: GCP and CDIAC.)\nNote: Data before 1959 was sourced from CDIAC; data from 1959 onwards was obtained from GCP.") +
+  theme(legend.position = "bottom", 
+        legend.text = element_text(size=8), 
+        legend.title = element_text(size=8, vjust = 0.9)) 
+
+ggsave("figure_5a.png", height = 6, width = 6, dpi = 600)    
+
+@
+
+<<df_co2_emissions_cum_by_countries>>=
+
+df_co2_emissions_cum_by_countries <-
+  raw_annual_co2_emissions_by_region %>% 
+    group_by(entity, code) %>% 
+    summarise(cum_CO2_emission=sum(annual_CO2_emission)) %>% 
+    filter(!is.na(code)) %>% 
+    inner_join(raw_country_region, by=c("code"="Three_Letter_Country_Code")) %>%
+    select(1, 2, 3, 4) %>% 
+    ungroup(entity, code) %>% 
+    mutate(continent = as.factor(Continent_Name)) %>% 
+    mutate(share = round(cum_CO2_emission*100/sum(cum_CO2_emission), 2))
+
+# Remove duplicates
+df_co2_emissions_cum_by_countries <- df_co2_emissions_cum_by_countries[!(df_co2_emissions_cum_by_countries$entity == "Azerbaijan" & df_co2_emissions_cum_by_countries$continent == "Europe"),]
+
+df_co2_emissions_cum_by_countries <- df_co2_emissions_cum_by_countries[!(df_co2_emissions_cum_by_countries$entity == "Armenia" & df_co2_emissions_cum_by_countries$continent == "Europe"),]
+
+df_co2_emissions_cum_by_countries <- df_co2_emissions_cum_by_countries[!(df_co2_emissions_cum_by_countries$entity == "Turkey" & df_co2_emissions_cum_by_countries$continent == "Europe"),]
+
+df_co2_emissions_cum_by_countries <- df_co2_emissions_cum_by_countries[!(df_co2_emissions_cum_by_countries$entity == "Cyprus" & df_co2_emissions_cum_by_countries$continent == "Asia"),]
+
+df_co2_emissions_cum_by_countries <- df_co2_emissions_cum_by_countries[!(df_co2_emissions_cum_by_countries$entity == "Georgia" & df_co2_emissions_cum_by_countries$continent == "Asia"),]
+
+df_co2_emissions_cum_by_countries <- df_co2_emissions_cum_by_countries[!(df_co2_emissions_cum_by_countries$entity == "Russia" & df_co2_emissions_cum_by_countries$continent == "Asia"),]
+
+df_co2_emissions_cum_by_countries <- df_co2_emissions_cum_by_countries[!(df_co2_emissions_cum_by_countries$entity == "Kazakhstan" & df_co2_emissions_cum_by_countries$continent == "Asia"),]
+
+df_co2_emissions_cum_by_countries$label <- 
+  paste(df_co2_emissions_cum_by_countries$entity, 
+        paste0(df_co2_emissions_cum_by_countries$share, "%"),
+        paste(round((df_co2_emissions_cum_by_countries$cum_CO2_emission)/1e9, 2), "bt", sep = " "), 
+        sep = "\n")
+  
+@
+
+<<figure_5b, eval=FALSE, echo=TRUE>>=
+
+ggplot(df_co2_emissions_cum_by_countries, aes(area = cum_CO2_emission, 
+                fill = continent,
+                label = label, 
+                subgroup = continent,
+                subgroup2 = entity)) +
+  scale_fill_brewer(palette = "Dark2") +
+  geom_treemap(aes(alpha = cum_CO2_emission), show.legend = FALSE) +
+  geom_treemap_subgroup_border(colour="white", show.legend = FALSE) + 
+  scale_alpha(range = c(0.2, 1)) +
+  geom_treemap_text(colour = "black",
+                    alpha = 0.6,
+                    place = "bottomleft",
+                    grow = F,
+                    reflow = T) +
+  geom_treemap_subgroup_text(fontface = "bold.italic",
+                             place = "top",
+                             grow = T,
+                             alpha = 0.3,
+                             colour = "black",
+                             min.size = 0) + 
+  labs(fill = "Cumulative Carbon Dioxide Emission (billion tonnes)", 
+       caption = "(Source: GCP and CDIAC.)\nNote: Data before 1959 was sourced from CDIAC; data from 1959 onwards was obtained from GCP.") +
+  theme(legend.position = "bottom", 
+        legend.text = element_text(size=8), 
+        legend.title = element_text(size=8, vjust = 0.9)) 
+
+ggsave("figure_5b.png", height = 6, width = 6, dpi = 600)    
+
+@
+
+\begin{figure}[!htb]
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include first image
+  \includegraphics[width=6.25cm]{figure_5a.png}  
+  \caption{Global $\mathrm{CO_2}$ emissions in 2017}
+  \label{fig:figure_5a}
+\end{subfigure}
+\hspace{7mm}
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include second image
+  \includegraphics[width=6.25cm]{figure_5b.png}   
+  \caption{Global cumulative $\mathrm{CO_2}$ emissions}
+  \label{fig:figure_5b}
+\end{subfigure}
+\caption{Global share of $\mathrm{CO_2}$ emissions in 2017 and cumulative $\mathrm{CO_2}$ emissions}
+\label{figure_5}
+\end{figure}
+The share of global $\mathrm{CO_2}$ emissions changes from year to year as countries' levels of economic activities vary. Therefore, an alternative interpretation is based on cumulative $\mathrm{CO_2}$ emissions. A treemap visualisation of the global share of cumulative $\mathrm{CO_2}$ emissions from 1750 to 2017 is shown in \Cref{fig:figure_5b}. This yields a different picture. Evidently, United States is the leading emitter, accounting for almost 400 bt of emissions or a quarter of all $\mathrm{CO_2}$ that the world has ever emitted. United States is, in fact, the biggest emitter by a significant margin. The next biggest emitter, China, is responsible for more than 12\% of cumulative $\mathrm{CO_2}$ emissions. 
+
+Several major emitters in 2017, such as Iran, Saudi Arabia and South Korea, were considered small contributors in terms of cumulative emissions. The converse was also true, that is, countries with the highest $\mathrm{CO_2}$ emissions over history were not necessarily the biggest contributors in 2017. An example is the United Kingdom, which accounted for 4.68\% of cumulative $\mathrm{CO_2}$ emissions but only 1.03\% of the annual $\mathrm{CO_2}$ emissions in 2017. Another observation from \Cref{fig:figure_5a} and \Cref{fig:figure_5b} is that Africa, South America and Oceania had consistently been small $\mathrm{CO_2}$ emitters relative to Asia, North America and Europe. 
+
+It is arguable that major emitters like China, United States and Russia emit more because of their bigger population sizes. Therefore, another interpretation is based on the average amount of $\mathrm{CO_2}$ emitted per person in the population, also known as ``$\mathrm{CO_2}$ emissions per capita''. Figure \ref{figure_6} shows a treemap visualisation depicting the $\mathrm{CO_2}$ emissions per capita of countries based on data in 2017. 
+
+<<raw_co2_emissions_pc>>=
+
+# Import data
+raw_co2_emissions_pc <- read_csv("Data/co-emissions-per-capita.csv")
+
+# Change column names
+colnames(raw_co2_emissions_pc) <- c("entity", "code", "year", "CO2_emission_per_capita")
+
+@
+
+<<df_co2_emissions_pc_2017>>=
+
+# Create a dataframe for per capital CO2 emissions in 2017
+df_co2_emissions_pc_2017 <- 
+  raw_co2_emissions_pc %>%
+    filter(year == 2017) %>% 
+    inner_join(raw_country_region, by=c("code"="Three_Letter_Country_Code")) %>% 
+    select(1, 2, 4, 5) %>% 
+    mutate(continent = as.factor(Continent_Name)) %>% 
+    mutate(share = round(CO2_emission_per_capita*100/sum(CO2_emission_per_capita), 3)) %>% 
+    mutate(label = paste(entity, round(CO2_emission_per_capita, 2), sep = "\n"))
+
+@
+
+<<figure_6, eval=FALSE, echo=TRUE>>=
+
+ggplot(df_co2_emissions_pc_2017, 
+       aes(area = CO2_emission_per_capita, 
+           fill = continent,
+           label = label, 
+           subgroup = continent,
+           subgroup2 = entity)) +
+  scale_fill_brewer(palette = "Dark2") +
+  geom_treemap(aes(alpha = CO2_emission_per_capita), show.legend = FALSE) +
+  geom_treemap_subgroup_border(colour="white", show.legend = FALSE) + 
+  scale_alpha(range = c(0.2, 1)) +
+  geom_treemap_text(colour = "black",
+                    alpha = 0.6,
+                    place = "bottomleft",
+                    grow = F,
+                    reflow = T) +
+  geom_treemap_subgroup_text(fontface = "bold.italic",
+                             place = "top",
+                             grow = T,
+                             alpha = 0.3,
+                             colour = "black",
+                             min.size = 0) + 
+  labs(fill = "Cumulative Carbon Dioxide Emission (billion tonnes)", 
+       caption = "(Source: GCP and CDIAC.)\nNote: Data before 1959 was sourced from CDIAC; data from 1959 onwards was obtained from GCP.") +
+  theme(legend.position = "bottom", 
+        legend.text = element_text(size=8), 
+        legend.title = element_text(size=8, vjust = 0.9)) 
+
+ggsave("figure_6.png", height = 4, width = 8)      
+
+@
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width = 10cm]{figure_6.png}
+\caption{Global share of $\mathrm{CO_2}$ emissions per capita in 2017}
+\label{figure_6}
+\end{figure}
+Figure \ref{figure_6} tells very different stories from \Cref{fig:figure_5a} and \Cref{fig:figure_5b}. Major emitters like China, United States, Russia and India, pale in comparison with countries like Qatar, Trinidad and Tobago and Kuwait. In fact, countries with the highest per capita $\mathrm{CO_2}$ emissions in 2017 happened to be oil-producing countries in the Middle East. These countries also tend to have relatively smaller population \cite{gapminderdataData}. Another observation from Figure \ref{figure_6} is that there were huge variations in $\mathrm{CO_2}$ emissions per capita across continents as well as across countries within each continent. The variations across continents can be further visualised using boxplots, as shown in Figure \ref{figure_7}.
+
+<<figure_7, eval=FALSE, echo=TRUE>>=
+
+df_co2_emissions_pc_2017 %>% 
+  ggplot(aes(x = continent, y = CO2_emission_per_capita, alpha=0.7)) +
+  geom_boxplot(aes(fill=continent), show.legend = FALSE, ) +
+  coord_flip() +
+  scale_fill_brewer(palette = "Dark2") +
+  xlab("") +
+  ylab("Carbon Dioxide Emissions Per Capita (billion tonnes)") +
+  theme(axis.text.y = element_text(size = 14))
+
+ggsave("figure_7.png", height = 5, width = 9, dpi = 500)    
+
+@
+\begin{figure}[!htb]
+\centering
+\includegraphics[width = 10cm]{figure_7.png}
+\caption{A graphical summary of $\mathrm{CO_2}$ emissions per capita in 2017 by continents}
+\label{figure_7}
+\end{figure}
+<<eval=FALSE>>=
+
+df_co2_emissions_pc_2017 %>% 
+  filter(continent == "Africa") %>% 
+  summarise(IQR(CO2_emission_per_capita))
+
+df_co2_emissions_pc_2017 %>% 
+  filter(continent == "Asia") %>% 
+  summarise(IQR(CO2_emission_per_capita))
+
+@
+Figure \ref{figure_7} shows several outliers\footnote{In this context, outliers were defined as countries whose $\mathrm{CO_2}$ emissions per capita is greater than the upper quartile value within the same continent and 1.5 times of the inter-quartile range of that continent.}. These outliers correspond to countries with significantly higher $\mathrm{CO_2}$ emissions per capita than other countries within the same continent. Examples include Qatar in Asia (49.2 bt), Trinidad and Tobago in North America (29.7 bt) and Australia in Oceania (16.9). Asia had the largest spread of $\mathrm{CO_2}$ emissions per capita, with an inter-quartile range (IQR) of 9.28 bt. This suggests that Asia had countries with both very high and very low $\mathrm{CO_2}$ emissions per capita, an observation which could also be inferred from Figure \ref{figure_6}. 
+
+The continent with the highest median $\mathrm{CO_2}$ emissions per capita was Europe (5.99 bt), followed by Asia (3.60 bt) and North America (2.45 bt). Africa, on the other hand, had the lowest median (0.42 bt) and smallest spread (1.00 bt) of $\mathrm{CO_2}$ emissions per capita amongst all regions, albeit several outliers. This implies that there was a significant number of African countries with very low $\mathrm{CO_2}$ emissions per capita. These observations suggest that there could be some correlation between a country's $\mathrm{CO_2}$ emissions per capita and how developed it is or its standard of living. Correlations between $\mathrm{CO_2}$ emissions per capita and such socio-economic factors will be further discussed in the next section. 
+\vspace{-6mm}
+\section{Modelling $\mathbf{CO_2}$ Emissions Per Capita}
+\vspace{-3mm}
+The analysis from the previous section suggested that an average person in a developed country emits more $\mathrm{CO_2}$ emissions than one in a less developed country. In this section, we will further explore the relationship between $\mathrm{CO_2}$ emissions per capita and standard of living, typically measured by gross domestic product (GDP) per capita\footnote{GDP is the sum of all goods and services produced by a country within a specific time period. It is a measure of a country's economy. GDP per capita represents the average income of a person in a country within a specified time period. The higher a country's GDP per capita, the better its standards of living.}. In addition, we will investigate other socio-economic factors---life expectancy, urban population share and unemployment rate---with data from 2017, and how they correlated with $\mathrm{CO_2}$ emissions per capita in 2017. 
+
+The key objective is to find a model that can best predict the response variable, $\mathrm{CO_2}$ emissions per capita in 2017. Such modelling would be useful for international organisations like the UN in understanding key predictors of $\mathrm{CO_2}$ emissions per capita, in order to coordinate global action in mitigating $\mathrm{CO_2}$ emissions. Since $\mathrm{CO_2}$ emissions per capita is a numerical continuous variable, a regression model would be appropriate. A multiple regression analysis will be performed to model $\mathrm{CO_2}$ emissions per capita in 2017 with these four predictor variables. We will also use the cross-validation technique to guide us towards choosing the best model. 
+\vspace{-6mm}
+\subsection{Visualising the Correlations}
+\vspace{-3mm}
+The relationships between $\mathrm{CO_2}$ emissions per capita and each variable are shown in Figure \ref{figure_8}. Each data point represents a country, colour-coded by its continent. Life expectancy and urban population share appear to have similar trends with $\mathrm{CO_2}$ emissions per capita. Their relationships are very different from those of $\mathrm{CO_2}$ emissions per capita with GDP per capita and unemployment rate. A common observation across these scatterplots is that they all appear to have a certain degree of non-linearity in the trends.
+<<df_gdp_2017>>=
+
+# Import the GDP dataset and create a dataframe to store GDP of all countries in 2017
+df_gdp_2017 <- 
+  read.csv("Data/API_NY.GDP.MKTP.CD_DS2_en_csv_v2_936013.csv", 
+           skip = 4,
+           stringsAsFactors = FALSE) %>% 
+  select(Country="Country.Name", Code="Country.Code", `GDP_2017`="X2017")
+
+@
+
+<<df_pop_2017>>=
+
+# Import the population dataset and create a dataframe to store the population numbers of all countries in 2017
+df_pop_2017 <- 
+  read.csv("Data/API_SP.POP.TOTL_DS2_en_csv_v2_936048.csv", 
+           skip = 4,
+           stringsAsFactors = FALSE) %>% 
+  select(Country="Country.Name", Code="Country.Code", `Pop_2017`="X2017")
+
+@
+
+<<df_life_exp_2017>>=
+
+# Import the life expectancy dataset and create a dataframe to store life exp of all countries in 2017
+df_life_exp_2017 <- 
+  read.csv("Data/API_SP.DYN.LE00.IN_DS2_en_csv_v2_935946.csv", 
+           skip = 4,
+           stringsAsFactors = FALSE) %>% 
+  select(Country="Country.Name", Code="Country.Code", `Life_Exp_2017`="X2017") 
+
+@
+
+<<df_urb_pop_2017>>=
+
+# Import the life expectancy dataset and create a dataframe to store life exp of all countries in 2017
+df_urb_pop_2017 <-
+ read.csv("Data/API_SP.URB.TOTL_DS2_en_csv_v2_936795.csv", 
+           stringsAsFactors = FALSE, skip = 4) %>% 
+  select(1, 2, urb_pop_2017=X2017)
+
+@
+
+<<df_unemp_rate_2017>>=
+
+# Import the unemployment rate dataset and create a dataframe to store unemployment rate of all countries in 2017
+df_unemp_rate_2017 <-
+ read.csv("Data/API_SL.UEM.TOTL.ZS_DS2_en_csv_v2_935940.csv", 
+           stringsAsFactors = FALSE, skip = 4) %>% 
+  select(1, 2, X2017)
+
+@
+
+<<df_master_data>>=
+
+df_master_data <-
+  raw_country_region %>% 
+    select(1, 5) %>% 
+    full_join(df_gdp_2017, by=c("Three_Letter_Country_Code"="Code")) %>% 
+    full_join(df_pop_2017, by=c("Three_Letter_Country_Code"="Code")) %>% 
+    mutate(GDP_PC_2017 = GDP_2017 / Pop_2017) %>% 
+    full_join(df_co2_emissions_pc_2017, by=c("Three_Letter_Country_Code"="code")) %>% 
+    select(continent=1, code=2, country=3, co2_pc_2017=9, co2_pc_2017_share=12,
+           gdp_2017=4, pop_2017=6, gdp_pc_2017=7) %>% 
+    full_join(df_life_exp_2017, by=c("code" = "Code")) %>% 
+    full_join(df_urb_pop_2017, by=c("code"="Country.Code")) %>% 
+    mutate(urb_pop_2017_share = round(urb_pop_2017*100/pop_2017, 3)) %>% 
+    full_join(df_unemp_rate_2017, by=c("code"="Country.Code"))%>% 
+    select(1:8, life_exp_2017=10, 12, 13, unemp_rate_2017=15) %>% 
+    filter(!is.na(continent) & !is.na(country))
+
+# Remove rows with duplicates
+duplicate_rows <- c(8, 9, 10, 18, 19, 20, 56, 57, 58, 78, 79, 80, 111, 112, 
+                    177, 178, 179, 215, 216)
+df_master_data = df_master_data[-duplicate_rows,]
+
+@
+
+<<df_master_clean>>=
+
+df_master_clean <-
+  df_master_data %>% 
+    select(1, 3, 4, 8, 9, 11, 12) %>% 
+    na.omit() %>% 
+    mutate(continent = factor(continent, levels=c("Africa", "Asia", "Europe", "North America", "Oceania", "South America")))
+
+@
+
+<<p1, eval=FALSE, echo=TRUE>>=
+
+p1 <-
+df_master_clean %>% 
+  ggplot(aes(x = gdp_pc_2017, y = co2_pc_2017)) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.6, 
+             show.legend = FALSE) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("GDP Per Capita (US$)") +
+  ylab("Carbon Dioxide Emissions Per Capita (tonnes)") +
+  ggsave("figure_8a.png", width = 6, height = 4)
+
+@
+
+<<p2, eval=FALSE, echo=TRUE>>=
+
+p2 <-
+df_master_clean %>% 
+  ggplot(aes(x = life_exp_2017, y = co2_pc_2017)) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.4) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("Life Expectancy (years)") +
+  ylab("Carbon Dioxide Emissions Per Capita (tonnes)") +
+  theme(legend.position = c(0.25, 0.7),
+        legend.title = element_blank(), 
+        legend.text = element_text(size=13))  +
+  ggsave("figure_8b.png", width = 6, height = 4)
+
+@
+
+<<p3, eval=FALSE, echo=TRUE>>=
+
+p3 <-
+df_master_clean %>% 
+  ggplot(aes(x = urb_pop_2017_share, y = co2_pc_2017)) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.4, 
+             show.legend = FALSE) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("Urban Population (% of total population)") +
+  ylab("Carbon Dioxide Emissions Per Capita (tonnes)")  +
+  ggsave("figure_8c.png", width = 6, height = 4)
+
+@
+
+<<p4, eval=FALSE, echo=TRUE>>=
+
+p4 <-
+df_master_clean %>% 
+  ggplot(aes(x = unemp_rate_2017, y = co2_pc_2017)) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.4, 
+             show.legend = FALSE) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("Unemployment Rate (% of total labour force)") +
+  ylab("Carbon Dioxide Emissions Per Capita (tonnes)") +
+  ggsave("figure_8d.png", width = 6, height = 4)
+
+@
+\begin{figure}[!htb]
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include first image
+  \includegraphics[width=6.25cm]{figure_8a.png}  
+  \caption{GDP per capita}
+  \label{fig:figure_8a}
+\end{subfigure}
+\hspace{7mm}
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include second image
+  \includegraphics[width=6.25cm]{figure_8b.png}   
+  \caption{Life expectancy}
+  \label{fig:figure_8b}
+\end{subfigure}
+
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include third image
+  \includegraphics[width=6.25cm]{figure_8c.png}
+  \caption{Urban population share}
+  \label{fig:figure_8c}
+\end{subfigure}
+\hspace{7mm}
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include third image
+  \includegraphics[width=6.25cm]{figure_8d.png}
+  \caption{Unemployment rate}
+  \label{fig:figure_8d}
+\end{subfigure}
+\caption{Correlations of $\mathrm{CO_2}$ emissions per capita with socio-economic variables}
+\label{figure_8}
+\end{figure}
+In linear regression, it is assumed that linear relationships exist between the predictor variables and the response variable \cite{jamesIntroductionStatisticalLearning2013}. Therefore, the non-linear patterns in Figure \ref{figure_8} needed to be transformed into linear forms before linear regression could be applied. A logarithmic transformation was assessed to be suitable because it is a monotonically-increasing function and it preserves the order of the data points. Figure \ref{figure_9} shows the scatterplots after logarithmic transformation was applied to the response variable.
+
+<<p1_trans, eval=FALSE, echo=TRUE>>=
+
+(p1_trans <-
+df_master_clean %>% 
+  ggplot(aes(x = gdp_pc_2017, y = log(co2_pc_2017))) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.4) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("GDP Per Capita (US$)") +
+  ylab("Log of Carbon Dioxide Emissions Per Capita (tonnes)") +
+  theme(legend.position = c(0.75, 0.25),
+        legend.title = element_blank(), 
+        legend.text = element_text(size=13)) +
+  geom_smooth(method = "lm", se = FALSE) +
+  ggsave("figure_9a.png", width = 6, height = 4))
+
+@
+
+<<p2_trans, eval=FALSE, echo=TRUE>>=
+
+(p2_trans <-
+df_master_clean %>% 
+  ggplot(aes(x = life_exp_2017, y = log(co2_pc_2017))) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.4, 
+             show.legend = FALSE) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("Life Expectancy (years)") +
+  ylab("Log of Carbon Dioxide Emissions Per Capita (tonnes)") +
+  geom_smooth(method = "lm", se = FALSE) +
+  ggsave("figure_9b.png", width = 6, height = 4))
+
+@
+
+<<p3_trans, eval=FALSE, echo=TRUE>>=
+
+(p3_trans <-
+df_master_clean %>% 
+  ggplot(aes(x = urb_pop_2017_share, y = log(co2_pc_2017))) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.4, 
+             show.legend = FALSE) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("Urban Population (% of total population)") +
+  ylab("Log of Carbon Dioxide Emissions Per Capita (tonnes)") +
+  geom_smooth(method = "lm", se = FALSE) +
+  ggsave("figure_9c.png", width = 6, height = 4))
+
+@
+
+<<p4_trans, eval=FALSE, echo=TRUE>>=
+
+(p4_trans <-
+df_master_clean %>% 
+  ggplot(aes(x = unemp_rate_2017, y = log(co2_pc_2017))) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.4, 
+             show.legend = FALSE) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("Unemployment Rate (% of total labour force)") +
+  ylab("Log of Carbon Dioxide Emissions Per Capita (tonnes)") +
+  geom_smooth(method = "lm", se = FALSE) +
+  ggsave("figure_9d.png", width = 6, height = 4))
+
+@
+\begin{figure}[!htb]
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include first image
+  \includegraphics[width=6.25cm]{figure_9a.png}  
+  \caption{GDP per capita}
+  \label{fig:figure_9a}
+\end{subfigure}
+\hspace{7mm}
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include second image
+  \includegraphics[width=6.25cm]{figure_9b.png}   
+  \caption{Life expectancy}
+  \label{fig:figure_9b}
+\end{subfigure}
+
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include third image
+  \includegraphics[width=6.25cm]{figure_9c.png}
+  \caption{Urban population share}
+  \label{fig:figure_9c}
+\end{subfigure}
+\hspace{7mm}
+\begin{subfigure}{5.5cm}
+  \captionsetup[subfigure]{justification=centering}
+  \centering
+  % include fourth image
+  \includegraphics[width=6.25cm]{figure_9d.png}
+  \caption{Unemployment rate}
+  \label{fig:figure_9d}
+\end{subfigure}
+\caption{Correlations of $\mathrm{CO_2}$ emissions per capita with socio-economic variables after logarithmic transformation}
+\label{figure_9}
+\end{figure}
+It is evident from Figure \ref{figure_9} that logarithmic transformation linearised the relationships of $\mathrm{CO_2}$ emissions per capita with life expectancy, urban population share and, to a weaker extent, unemployment rate, but not GDP per capita. The original graph in \Cref{fig:figure_8a} shows many data points clustered around the lower left of the graph. A logarithmic transformation of $\mathrm{CO_2}$ emissions per capita spread these data points out along the y-axis. However, the resulting graph shown in \Cref{fig:figure_9a} was still far from a linear relationship. In fact, it closely resembled a logarithm graph. Applying a logarithmic transformation on GDP per capita produced the linear graph in Figure \ref{figure_10}. These linearised forms thereby make it appropriate for further analyses and modelling with linear regression.
+
+It can also be observed from Figure \ref{figure_9} that every scatterplot had best-fit regression lines with positive gradients, suggesting some form of positive relationships between $\mathrm{CO_2}$ emissions per capita and the predictor variables. This implies that countries with higher GDP per capita, life expectancy, urban population share and unemployment rate tended to emit more $\mathrm{CO_2}$ emissions per capita. However, the variable, unemployment rate, appeared to have a very weak positive relationship with the response variable, indicating that unemployment rate alone was not a good predictor of $\mathrm{CO_2}$ emissions per capita in 2017.
+
+<<p1_trans_2, eval=FALSE, echo=TRUE>>=
+
+(p1_trans_2 <-
+df_master_clean %>% 
+  ggplot(aes(x = log(gdp_pc_2017), y = log(co2_pc_2017))) + 
+  geom_point(aes(col = continent), 
+             size = 2, 
+             alpha = 0.4) +
+  scale_color_brewer(type = "Qual", palette = "Dark2") +
+  theme_grey() +
+  xlab("Log of GDP Per Capita (US$)") +
+  ylab("Log of Carbon Dioxide Emissions Per Capita (tonnes)") +
+  theme(legend.position = c(0.75, 0.25),
+        legend.title = element_blank(), 
+        legend.text = element_text(size=13)) +
+  geom_smooth(method = "lm", se = FALSE) +
+  ggsave("figure_10.png", width = 6, height = 4))
+
+@
+\begin{figure}[!htb]
+\centering
+\includegraphics[width = 8cm]{figure_10.png}
+\caption{Correlation of logarithm of $\mathrm{CO_2}$ emissions per capita and logarithm of GDP per capita}
+\label{figure_10}
+\end{figure}
+\vspace{-6mm}
+\subsection{Multiple Linear Regression}
+\vspace{-3mm}
+Using the linearised forms, the regression model can be represented as,
+\begin{equation}
+Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_3X_3 + \beta_4X_4, 
+\label{mr_formula0}
+\end{equation}
+where $Y$ is a random variable representing the logarithm of $\mathrm{CO_2}$ emissions per capita, and $X_1$, $X_2$, $X_3$ and $X_4$ are random variables representing logarithm of GDP per capita, life expectancy, urban population share and unemployment rate respectively. $\beta_0$ is the intercept of the regression line, and $\beta_1$,  $\beta_2$,  $\beta_3$ and $\beta_4$ are the coefficients associated with the each predictor variable. Multiple linear regression was performed in the R statistical software and the results are shown in Table \ref{table_2}.
+
+<<df_log_master_clean>>=
+
+# Log-transform co2_pc_2017 and GDP_pc_2017 only
+(df_log_master_clean <-
+df_master_clean %>%
+  mutate(log_co2_pc_2017 = log(co2_pc_2017)) %>%
+  mutate(log_gdp_pc_2017 = log(gdp_pc_2017))%>% 
+  select(1, 2, 8, 9, 5:7))
+
+@
+
+<<eval=FALSE>>=
+
+model1 = glm(log_co2_pc_2017 ~ log_gdp_pc_2017 + life_exp_2017 + urb_pop_2017_share + unemp_rate_2017, data = df_log_master_clean)
+
+# Define coefficients as a dataframe
+Coefficients <- c("(Intercept)", "Log of GDP per capita", "Life expectancy", "Urban population share", "Unemployment rate")
+Coefficients <- data.frame(Coefficients)
+
+summary_model <- 
+    Coefficients %>% 
+    bind_cols(data.frame(summary(model1)$coefficients))
+
+names(summary_model) <- c("Coefficients", "Estimates", "Std. error", "Z-statistic", "P-value")
+
+# Compute critical t value at 97.5% quantile and 177 - 5 degrees of freedom
+t_critical = qt(0.975, 177 - 5)
+
+(summary_model_kable <- 
+summary_model %>% 
+  mutate(`Lower CI` = Estimates - t_critical*`Std. error`) %>% 
+  mutate(`Upper CI` = Estimates + t_critical*`Std. error`) %>% 
+  mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>% 
+  select(1, 2, 5, 6, 7))
+  
+print(xtable::xtable(summary_model_kable))
+
+@
+\begin{table}[ht]
+\centering
+\makebox[\textwidth]{\begin{tabular}{cccccc}
+  \hline
+\textbf{Input variables} & \textbf{Coefficients}  & \textbf{Estimates} & \textbf{P-value} & \textbf{Lower CI} & \textbf{Upper CI} \\ 
+  \hline
+(Intercept) & $\beta_0$ & -7.77 & 8.13e-29 & -8.91 & -6.64 \\ 
+Log of GDP per capita & $\beta_1$ & 0.788 & 1.25e-17 & 0.625 & 0.951 \\ 
+Life expectancy & $\beta_2$ & 0.0163 & 0.214 & -0.0095 & 0.0421 \\ 
+Urban population share & $\beta_3$ & 0.00626 & 0.0839 & -0.000849 & 0.0134 \\ 
+Unemployment rate & $\beta_4$ & 0.0198 & 0.0447 & 0.000478 & 0.0391 \\ 
+   \hline
+\end{tabular}}
+\caption{Results of multiple linear regression}
+\label{table_2}
+\end{table}
+With the estimates generated from this analysis, the regression model can be represented as,
+\begin{equation}
+Y = -7.77 + 0.788X_1 + 0.0163X_2 + 0.00626X_3 + 0.0198X_4.
+\label{mr_formula1}
+\end{equation}
+All coefficients associated with the predictor variables had positive values, consistent with the trends in Figure \ref{figure_9}. The relationship between the logarithm of GDP per capita ($X_1$) and the response variable ($Y$) was particularly strong with a coefficient of 0.788, which was evident from Figure \ref{figure_10}. Other predictor variables, especially urban population share, had significantly smaller coefficient values. The p-values for the logarithm of GDP per capita and unemployment rate were less than 0.05. This suggests that both variables were statistically significant at 5\% significance level, that is, they were significant predictors of the response variable. 
+
+The uncertainties around the true values of the coefficients are represented by the 95\% confidence intervals in Table \ref{table_2}. The 95\% confidence intervals of the coefficients for logarithm of GDP per capita and unemployment rate were entirely in the positive range and did not contain zero, which implies that there is 95\% probability that their correlations with the response variable were positive. However, unlike the logarithm of GDP per capita, unemployment rate had a confidence interval which was much closer to zero and is therefore more unstable. On the other hand, the confidence intervals for life expectancy and urban population share contained zero, which means that the hypothesis that these variables did not have an effect on the response variable cannot be rejected.
+\vspace{-6mm}
+\subsection{Choosing the Best Model}
+\vspace{-3mm}
+In the previous section, we fitted a multiple linear regression model using all four predictor variables. The results showed that not all variables shared equal importance in terms of statistical significance. With four predictor variables, there are, in fact, 15 different combinations of variables which can be used to model $\mathrm{CO_2}$ emissions per capita. This section further explores these combinations and seeks to find the model that best explains $\mathrm{CO_2}$ emissions per capita in 2017. 
+
+For each combination of predictor variables, the original data was randomly split into two subsets---75\% as training data and the remaining 25\% as test data. A linear regression model was fitted with the training data. Using the fitted models, predictions of the response variable were made given input values in the test data. Finally, these predictions were compared against the actual values in the test data using root-mean-squared error (RMSE)\footnote{RMSE is the standard deviation of the difference between predicted and actual values. It is a measure of how close the fitted regression line is from the data points.}. The best model is the combination which produced the lowest RMSE. 
+
+Since the training data was randomly sampled, repeating these steps might generate a different ``best" model. Thus, we performed cross-validation with 1,000 iterations to determine the combination that produced the lowest RMSE most frequently. In general, cross-validation also helps to improve the predictive performance of a model by preventing over-fitting of data, a common problem that diminishes a model's ability to generalise to unseen data. The results of cross-validation are summarised in Figure \ref{figure_11}. Based on these results, the best model was Model 15. This was the model with all four predictor variables explored in the previous section and is represented by Equation (\ref{mr_formula1}).  
+<<rmse_function>>=
+
+rmse <- function(actual, predicted) {
+  error = actual - predicted
+  sqrt(mean(error^2))
+}
+
+@
+
+<<create_combinations_in_dataframe, echo=TRUE>>=
+
+# Create different combinations in terms of indices as a data frame
+combinations = data.frame(allCombs(1:4))
+
+# Replace indices with names of input variables
+for (i in 1:length(colnames(df_log_master_clean)[3:7])){
+  combinations[combinations==as.character(i)] = colnames(df_log_master_clean)[i+3]
+}
+
+# Remove the first row with all NAs
+combinations = combinations[2:16,]
+
+@
+
+<<create_combinations_in_vector, echo=TRUE>>=
+
+# Initialise an empty vector to store combinations of formulae
+fmla_vector <- rep(NA, nrow(combinations)-1)
+
+for (i in 1:nrow(combinations)){
+
+  # Initialise the string for each formula
+  fmla_string <- paste("log_co2_pc_2017 ~", as.name(combinations[i,1]))
+  
+  # If a row contains more than 1 input, append them to the formula with a "+"
+  if (sum(!is.na(combinations[i,])) > 1){
+    for (j in 1:4){
+      if (is.na(combinations[i,j]) == FALSE){
+        fmla_string <- paste(fmla_string, "+", as.name(combinations[i,j]))
+      }
+    }
+  } 
+  
+  # Store each formula string in the formula vector
+  fmla_vector[i] = fmla_string
+}
+
+@
+
+<<cross_validation, eval=FALSE, echo=TRUE>>=
+
+# Create a variable to store length of formula vector
+fmla_vector_len <- length(fmla_vector)
+
+# Create a variable to store number of observations in mushroom data
+num_rows = nrow(df_log_master_clean)
+
+# Initialise an empty vector to store "winners" of each iteration
+winner_rmse_cv = rep(NA, 1000)
+
+for (iteration in 1:1000){
+  
+  print(paste("Iteration:", iteration))
+  
+  # Make a new random training-test data split
+  test_idx = sample(num_rows, round(0.25*num_rows))
+  test_data = df_log_master_clean[test_idx,]
+  train_data = df_log_master_clean[-test_idx,]
+  
+  # Create an empty vector to store RMSE values for each formula
+  rmse_values_cv <- rep(NA, fmla_vector_len)
+
+  for (i in 1:fmla_vector_len){
+    
+    # First fit a glm model with the training data
+    current_model_cv = glm(formula = as.formula(fmla_vector[i]), data = train_data)
+ 
+    # Make a prediction of CO2 emission per capita using the fitted model on test data
+    prediction_cv = predict(current_model_cv, newdata=test_data)
+    
+    # Store RMSE values of each model in a vector
+    rmse_values_cv[i] = rmse(test_data$log_co2_pc_2017, prediction_cv)
+
+  }
+  
+  # Find the winning model for this iteration  
+  winner_rmse_cv[iteration] = which.min(rmse_values_cv) 
+ 
+}
+
+@
+
+<<figure_11, eval=FALSE>>=
+
+# Plot a histogram of how often each model wins
+ggplot(data = data.frame(winner_rmse_cv), aes(x = winner_rmse_cv)) +
+ geom_histogram(color="black", fill="white", binwidth = 1) +
+ xlab("Model") +
+ ylab("Frequency of iterations with lowest RMSE") +
+ theme_grey() +
+ theme(plot.caption = element_text(size = 10, face = "bold", hjust = 0.5)) +
+  ggsave("figure_11.png", width = 6, height = 4)
+
+@
+\begin{figure}[!htb]
+\centering
+\includegraphics[width = 10cm]{figure_11.png}
+\caption{Frequency distribution of models which yield predictions with lowest RMSE}
+\label{figure_11}
+\end{figure}
+\vspace{-6mm}
+\subsection{Correlation and Causality}
+\vspace{-3mm}
+It is a common pitfall to equate correlation with causality. Correlation represents the size and direction of relationships between variables, whereas causality implies some form of cause-and-effect relationships \cite{australianbureauofstatisticsStatisticalLanguageCorrelation}. Despite the need to distinguish the two, correlations provide useful information and can help guide further research into the causal analysis between variables. 
+
+In our statistical model from the previous section, it was found that the socio-economic variables had positive correlations with $\mathrm{CO_2}$ emissions per capita in 2017. For instance, our model suggested that countries with higher urban population share emitted more $\mathrm{CO_2}$ emissions per capita. It would be erroneous to conclude that higher urbanisation levels necessarily caused higher $\mathrm{CO_2}$ emissions per capita in 2017, but further research can be conducted to investigate why and how more urbanised countries could have potentially emitted more. 
+\vspace{-6mm}
+\section{Limitations of Analyses}
+\vspace{-3mm}
+The analyses presented in this report were not without limitations. One key aspect was data quality. Given that most datasets used in this report contain data collated from different countries, the methodologies in data collection and quality assurance practices would hardly be consistent. The datasets on $\mathrm{CO_2}$ emissions came from two different sources: the CDIAC before 1959 and the GCP from 1959 onwards. This meant that there would be differences in how $\mathrm{CO_2}$ emissions were measured and recorded. Such inconsistencies could also stem from the fact that some data used in this report, for instance the global temperature anomalies and $\mathrm{CO_2}$ emissions, dated back to the 1800s when equipment and methods of measurements were not as advanced as today. 
+
+Our analyses were also limited by availability of data. An example was the global forest area data collected by the FAO of the UN, which was only available at intervals of 5 years. As much as it would be challenging to obtain precise forest area data from all countries on a yearly basis, such limitation hampers deeper analyses of specific deforestation trends in different regions. Limited availability of data also affected our regression analysis in Section 6. There were about 50 countries without data on at least one of the predictor variables. To ensure that the regression analysis was performed with complete data, these countries had to be omitted.
+\vspace{-6mm}
+\section{Areas for Future Research}
+\vspace{-3mm} 
+The regression model in Section 6 was a simple model with several underlying assumptions. A potential area for future research would be to investigate the validity of these assumptions to improve the current model. One assumption was that multi-collinearity between the predictor variables was low. There is scope to ascertain if this assumption was valid and how it affects the model's performance. Other possible areas of future studies include modelling $\mathrm{CO_2}$ emissions per capita by continents, since continents vary in terms of emissions per capita as we saw in Figure \ref{figure_7}, modelling $\mathrm{CO_2}$ emissions per capita with more predictor variables, as well as exploring other supervised modelling methods such as random forest and polynomial regression.   
+\vspace{-6mm}
+\section{Conclusions}
+\vspace{-3mm} 
+The evidence from data is irrefutable. The Earth's temperature is rising. Ice sheets are melting and sea levels are increasing. Extreme weather events are unleashing upon the planet more frequently and intensively than before. It is undeniable that the Earth's climate is changing, a result of global warming caused by increasing greenhouse gases in the Earth's atmosphere. In this report, we looked at the primary greenhouse gas, $\mathrm{CO_2}$, and demonstrated with data how human activities have contributed to $\mathrm{CO_2}$ emissions. We developed a regression model to predict $\mathrm{CO_2}$ emissions per capita of each country. We analysed how emission levels had changed over time and learned which countries were the biggest emitters. We also saw that every country contributes to $\mathrm{CO_2}$ emissions in different magnitudes. 
+
+Notwithstanding, climate change is a global problem and every nation should share a common responsibility in tackling it. A monumental milestone in the world's fight against climate change was the signing of the Paris Agreement by 197 countries in 2016. The Paris Agreement aims to strengthen global response to climate change by keeping a global temperature rise ``well below 2 degrees Celsius above pre-industrial levels" in this century \cite{unitednationsclimatechangeParisAgreement}. Amongst other obligations, the Paris Agreement requires countries to cut pollution and limit greenhouse gas emissions. Beyond such global action, societies and individuals should also change their mindsets and be more conscious about how their actions can impact the environment. Only then can the world become a cleaner and a more sustainable place to live in. 
+\newpage
+\vspace{-6mm}
+\begin{flushleft}
+\bibliography{References}
+\vspace{-6mm}
+\end{flushleft}
+\newpage
+\section*{Appendix}
+\vspace{5mm}
+\begin{table}[!htb]
+\makebox[\textwidth]{\begin{tabular}{@{}ccc@{}}
+\toprule
+\textbf{Raw Filenames}                            & \textbf{Description of Dataset}                                                                                   & \textbf{Source}                                                                                                                            \\ \midrule
+GLB.Ts+dSST.csv                                   & \begin{tabular}[c]{@{}c@{}}Global mean land-ocean \\ temperature anomaly, \\ 1880-2020\end{tabular}               & \begin{tabular}[c]{@{}c@{}}NASA Goddard Institute \\ of Space Studies\end{tabular}                                                         \\ \midrule
+GMSL\_TPJAOS\_4.2\_199209\_202003.txt             & \begin{tabular}[c]{@{}c@{}}Global mean \\ sea level variations, \\ 1993-2019\end{tabular}                         & \begin{tabular}[c]{@{}c@{}}NASA Goddard \\ Space Flight Center\end{tabular}                                                                \\ \midrule
+CO2-by-source.csv                                 & \begin{tabular}[c]{@{}c@{}}Annual carbon \\ dioxide emissions \\ by fuel types, \\ 1751-2017\end{tabular}         & \begin{tabular}[c]{@{}c@{}}Primary: GCP, CDIAC, \\ Gapminder, UN \\ Population Estimates\\ \\ Secondary: Our World in Data\end{tabular}    \\ \midrule
+co-emissions-per-capita.csv                       & \begin{tabular}[c]{@{}c@{}}Annual carbon dioxide \\ emissions per person \\ by country, \\ 1751-2017\end{tabular} & \begin{tabular}[c]{@{}c@{}}Primary: GCP, CDIAC, \\ Gapminder and UN \\ Population Estimates\\ \\ Secondary: Our World in Data\end{tabular} \\ \midrule
+annual-co-emissions-by-region.csv                       & \begin{tabular}[c]{@{}c@{}}Annual carbon \\ dioxide emissions \\ by country, \\ 1751-2017\end{tabular} & \begin{tabular}[c]{@{}c@{}}Primary: GCP, CDIAC, \\ Gapminder and UN \\ Population Estimates\\ \\ Secondary: Our World in Data\end{tabular} \\ \midrule
+Forest\_area\_thousands\_of\_hectares.csv         & \begin{tabular}[c]{@{}c@{}}Global forest area, \\ 2000-2015\end{tabular}                                          & UN Statistics Division                                                                                                                     \\ \midrule
+country-and-continent-codes-list.csv              & \begin{tabular}[c]{@{}c@{}}List of countries \\ and their continents\end{tabular}                                 & \begin{tabular}[c]{@{}c@{}}Primary: John Snow Labs\\ \\ Secondary: DataHub\end{tabular}                                                    \\ \midrule
+API\_NY.GDP.MKTP.CD\_DS2\_en\_csv\_v2\_936013.csv & \begin{tabular}[c]{@{}c@{}}GDP per capita, \\ 1960-2018\end{tabular}                                              & World Bank                                                                                                                                 \\ \midrule
+API\_SP.POP.TOTL.DS2\_en\_csv\_v2\_936048.csv     & \begin{tabular}[c]{@{}c@{}}Total population, \\ 1960-2018\end{tabular}                                            & UN Population Division                                                                                                                     \\ \midrule
+API\_SP.DYN.LE00.IN\_DS2\_en\_csv\_v2\_935946.csv & \begin{tabular}[c]{@{}c@{}}Life expectancy at birth, \\ 1960-2018\end{tabular}                                    & UN Population Division                                                                                                                     \\ \midrule
+API\_SP.URB.TOTL\_DS2\_en\_csv\_v2\_936795.csv    & \begin{tabular}[c]{@{}c@{}}Total urban population, \\ 1960-2018\end{tabular}                                      & UN Population Division                                                                                                                     \\ \midrule
+API\_SL.UEM.TOTL.ZS\_DS2\_en\_csv\_v2\_935940.csv & \begin{tabular}[c]{@{}c@{}}Unemployment rate, \\ 1991-2019\end{tabular}                                           & \begin{tabular}[c]{@{}c@{}}International Labour \\ Organisation\end{tabular}                                                               \\ \bottomrule
+\end{tabular}}
+\end{table}
+
+%\begin{filecontents}{References3.bib} 
+%@misc{shaftelOverviewWeatherGlobal,
+%  title = {Overview: {{Weather}}, {{Global Warming}} and {{Climate Change}}},
+%  shorttitle = {Overview},
+%  author = {Shaftel, Holly},
+%  abstract = {``Climate change'' and ``global warming'' are often used interchangeably but have distinct meanings. Similarly, the terms "weather" and "climate" are sometimes confused, though they refer to events with broadly different spatial- and timescales.},
+%  file = {C\:\\Users\\User\\Zotero\\storage\\B8SGZZR6\\global-warming-vs-climate-change.html},
+%  howpublished = {https://climate.nasa.gov/resources/global-warming-vs-climate-change},
+%  journal = {Climate Change: Vital Signs of the Planet}
+%}
+%\end{filecontents}
+
+%\bibliography{References}
+\end{document}
+
+
